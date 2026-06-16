@@ -14,8 +14,8 @@ import { verifyRole, verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get("/", getAllBooks);
-router.post("/create", verifyToken, verifyRole("USER", "ADMIN"), uploadBook.single("cover_file"), createBook);
+router.get("/", verifyToken, verifyRole("USER", "ADMIN"), getAllBooks);
+router.post("/create", verifyToken, verifyRole("ADMIN"), uploadBook.single("cover_file"), createBook);
 router.put("/update/:id", verifyToken, verifyRole("ADMIN"), uploadBook.single("cover_file"), updateBook);
 router.delete("/delete/:id", verifyToken, verifyRole("ADMIN"),deleteBook);
 router.get('/top-authors', verifyToken, verifyRole("USER", "ADMIN"), getTopAuthors);

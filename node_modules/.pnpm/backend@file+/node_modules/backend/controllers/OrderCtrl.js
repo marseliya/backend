@@ -659,3 +659,119 @@ export const updateOrder = async (req, res) => {
   }
 };
 
+// CANCEL ORDER 
+export const deleteOrder = async (req, res) => {
+  try {
+      const orderId = req.params.id;
+      const userId = req.user.id; 
+
+      // 1. CEK APAKAH ORDER ADA
+      const orderCheck = await pool.query(
+          `
+          SELECT 
+              id, 
+              user_id, 
+              status_pembayaran, 
+              status_pengambilan,
+              metode_pengambilan
+          FROM orders 
+          WHERE id = $1
+          `,
+          [orderId]
+      );
+
+      if (orderCheck.rows.length === 0) {
+          return res.status(404).json({
+              message: "Order tidak ditemukan"
+          });
+      }
+
+      const order = orderCheck.rows[0];
+
+      // 2. CEK APAKAH ORDER MILIK USER INI
+      if (order.user_id !== userId) {
+          return res.status(403).json({
+              message: "Anda tidak memiliki akses untuk membatalkan order ini"
+          });
+      }
+
+      // 3. CEK STATUS - HANYA BISA BATAL JIKA KEDUA STATUS PENDING
+      if (order.status_pembayaran !== "pending" || order.status_pengambilan !== "pending") {
+          return res.status(400).json({
+              message: "Order hanya bisa dibatalkan jika status pembayaran dan pengambilan masih pending"
+          });
+      }
+
+      // 4. AMBIL ORDER ITEMS UNTUK RESTORE STOK
+      const orderItems = await pool.query(
+          `
+          SELECT book_id, jml 
+          FROM order_items 
+          WHERE order_id = $1
+          `,
+          [orderId]
+      );
+
+      // 5. MULAI TRANSACTION
+      const client = await pool.connect();
+      
+      try {
+          await client.query("BEGIN");
+
+          // 5a. RESTORE STOK BUKU
+          for (const item of orderItems.rows) {
+              await client.query(
+                  `
+                  UPDATE books 
+                  SET stok = stok + $1 
+                  WHERE id = $2
+                  `,
+                  [item.jml, item.book_id]
+              );
+          }
+
+          // 5b. DELETE ORDER ITEMS
+          await client.query(
+              `
+              DELETE FROM order_items 
+              WHERE order_id = $1
+              `,
+              [orderId]
+          );
+
+          // 5c. DELETE ORDER
+          await client.query(
+              `
+              DELETE FROM orders 
+              WHERE id = $1
+              `,
+              [orderId]
+          );
+
+          await client.query("COMMIT");
+
+          res.json({
+              success: true,
+              message: "Order berhasil dibatalkan",
+              data: {
+                  order_id: orderId,
+                  restored_stok: orderItems.rows.length > 0
+              }
+          });
+
+      } catch (error) {
+          await client.query("ROLLBACK");
+          console.error("Transaction error:", error);
+          throw error;
+      } finally {
+          client.release();
+      }
+
+  } catch (error) {
+      console.error("Cancel Order Error:", error.message);
+      res.status(500).json({
+          success: false,
+          message: "Server Error"
+      });
+  }
+};

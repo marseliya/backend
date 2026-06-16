@@ -5,6 +5,7 @@ import {
   updateOrder,
   getOrderItems,
   getOrdersByUser,
+  deleteOrder,
 } from "../controllers/OrderCtrl.js";
 
 import { verifyToken } from "../middleware/auth.js";
@@ -20,5 +21,6 @@ router.get("/", verifyToken, verifyRole("ADMIN", "USER"), getAllOrders);
 router.get("/user/:userId", verifyToken, verifyRole("ADMIN"), getOrdersByUser);
 // OrderRoutes
 router.get("/driver/:driverId", verifyToken, verifyRole("ADMIN"), getOrdersByDriver);
+router.delete("/delete/:id", verifyToken, verifyRole("USER"), deleteOrder);
 
 export default router;
